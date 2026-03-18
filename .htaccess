@@ -1,0 +1,11 @@
+# admin/.htaccess
+RewriteEngine On
+
+# Permettre l'accès aux fichiers PHP
+<FilesMatch "\.php$">
+    Order Allow,Deny
+    Allow from all
+</FilesMatch>
+
+# Désactiver l'indexation
+Options -Indexes
