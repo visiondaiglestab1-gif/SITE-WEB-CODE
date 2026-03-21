@@ -1,59 +1,92 @@
 <?php
-session_start();
 require_once 'config/database.php';
 
-$database = new Database();
-$db = $database->getConnection();
-
-// Récupérer les paramètres
-$settings = [];
-$query = "SELECT * FROM settings";
-$stmt = $db->query($query);
-while($row = $stmt->fetch(PDO::FETCH_ASSOC)) {
-    $settings[$row['setting_key']] = $row['setting_value'];
-}
+// Récupérer les paramètres du site
+$settings = getAllSettings();
 
 // Récupérer les derniers sermons
-$query = "SELECT * FROM sermons ORDER BY date DESC LIMIT 6";
-$sermons = $db->query($query)->fetchAll(PDO::FETCH_ASSOC);
+$sermons = [];
+try {
+    $stmt = $pdo->query("SELECT * FROM sermons ORDER BY sermon_date DESC LIMIT 6");
+    $sermons = $stmt->fetchAll();
+} catch (Exception $e) {
+    $sermons = [];
+}
 
-// Récupérer les événements
-$query = "SELECT * FROM events WHERE event_date >= CURDATE() ORDER BY event_date LIMIT 4";
-$events = $db->query($query)->fetchAll(PDO::FETCH_ASSOC);
+// Récupérer les événements à venir
+$events = [];
+try {
+    $stmt = $pdo->query("SELECT * FROM evenements WHERE event_date >= NOW() ORDER BY event_date LIMIT 4");
+    $events = $stmt->fetchAll();
+} catch (Exception $e) {
+    $events = [];
+}
 
-// Récupérer les pasteurs
-$query = "SELECT * FROM pastors ORDER BY display_order";
-$pastors = $db->query($query)->fetchAll(PDO::FETCH_ASSOC);
+// Récupérer les témoignages approuvés
+$testimonials = [];
+try {
+    $stmt = $pdo->query("SELECT * FROM testimonials WHERE approved = 1 ORDER BY created_at DESC LIMIT 3");
+    $testimonials = $stmt->fetchAll();
+} catch (Exception $e) {
+    $testimonials = [];
+}
+
+// Récupérer les statistiques
+$stats = [];
+try {
+    $stmt = $pdo->query("SELECT stat_key, stat_value FROM stats");
+    while ($row = $stmt->fetch()) {
+        $stats[$row['stat_key']] = $row['stat_value'];
+    }
+} catch (Exception $e) {
+    $stats = [];
+}
+
+// Récupérer les derniers articles de blog
+$blog_posts = [];
+try {
+    $stmt = $pdo->query("SELECT * FROM blog_posts WHERE published = 1 ORDER BY created_at DESC LIMIT 3");
+    $blog_posts = $stmt->fetchAll();
+} catch (Exception $e) {
+    $blog_posts = [];
+}
+
+// Récupérer les paramètres
+$site_title = $settings['site_title'] ?? 'VISION D\'AIGLES Tabernacle';
+$site_description = $settings['site_description'] ?? 'Une église de foi et de puissance à Brazzaville';
+$main_verse = $settings['main_verse'] ?? 'Ésaïe 40:31';
+$address = $settings['address'] ?? 'Brazzaville, République du Congo';
+$contact_phone = $settings['contact_phone'] ?? '+242 06 629 30 93';
+$contact_email = $settings['contact_email'] ?? 'contact@visiondaigles.org';
+$worship_times = $settings['worship_times'] ?? 'Dimanche 10h - Mercredi 18h';
+$youtube_url = $settings['youtube_url'] ?? 'https://www.youtube.com/@AyezFoienDieu';
+$whatsapp_group = $settings['whatsapp_group'] ?? 'https://chat.whatsapp.com/HCikWDquIvw4qNfDGjErRC';
+$whatsapp_direct = $settings['whatsapp_direct'] ?? 'https://wa.me/242066293093';
+$radio_url = $settings['radio_url'] ?? 'https://vateglise.ismyradio.com/player';
+$pastor_name = $settings['pastor_name'] ?? 'Pasteur Rubiel Jabien';
+$pastor_title = $settings['pastor_title'] ?? 'Pasteur Fondateur';
+$pastor_bio = $settings['pastor_bio'] ?? 'Appelé à réveiller la vision prophétique dans le corps de Christ.';
+$pastor_photo = $settings['pastor_photo'] ?? 'assets/images/pastor-placeholder.jpg';
 
 // Traitement du formulaire de requête
 $request_message = '';
 $request_error = '';
 
-if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
+if ($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
     $name = trim($_POST['request_name'] ?? '');
     $email = trim($_POST['request_email'] ?? '');
     $phone = trim($_POST['request_phone'] ?? '');
     $request_type = $_POST['request_type'] ?? 'autre';
     $message = trim($_POST['request_message'] ?? '');
-    $ip = $_SERVER['REMOTE_ADDR'] ?? '';
     
-    if(empty($name) || empty($email) || empty($message)) {
+    if (empty($name) || empty($email) || empty($message)) {
         $request_error = "Veuillez remplir tous les champs obligatoires";
     } else {
         try {
-            $sql = "INSERT INTO user_requests (name, email, phone, request_type, message, ip_address) 
-                    VALUES (:name, :email, :phone, :request_type, :message, :ip)";
-            $stmt = $db->prepare($sql);
-            $stmt->execute([
-                ':name' => $name,
-                ':email' => $email,
-                ':phone' => $phone,
-                ':request_type' => $request_type,
-                ':message' => $message,
-                ':ip' => $ip
-            ]);
+            $stmt = $pdo->prepare("INSERT INTO requetes (name, email, phone, request_type, message) VALUES (?, ?, ?, ?, ?)");
+            $stmt->execute([$name, $email, $phone, $request_type, $message]);
             $request_message = "Votre requête a été envoyée avec succès ! Nous vous répondrons dans les plus brefs délais.";
-        } catch(PDOException $e) {
+        } catch (Exception $e) {
             $request_error = "Erreur lors de l'envoi. Veuillez réessayer.";
         }
     }
@@ -64,26 +97,33 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title><?php echo htmlspecialchars($settings['site_title'] ?? 'VISION D\'AIGLES Tabernacle'); ?></title>
+    <title><?php echo htmlspecialchars($site_title); ?></title>
     
-    <!-- Meta tags -->
-    <meta name="description" content="<?php echo htmlspecialchars($settings['site_description'] ?? 'VISION D\'AIGLES Tabernacle - Une église de foi et de puissance'); ?>">
-    <meta name="keywords" content="église, vision d'aigles, tabernacle, culte, prédications, bible, galerie, FAQ">
+    <!-- Meta tags SEO -->
+    <meta name="description" content="<?php echo htmlspecialchars($site_description); ?>">
+    <meta name="keywords" content="église, vision d'aigles, tabernacle, culte, prédications, bible, galerie, témoignages">
+    <meta name="author" content="VISION D'AIGLES Tabernacle">
     
-    <!-- Open Graph -->
+    <!-- Open Graph / Facebook -->
     <meta property="og:type" content="website">
     <meta property="og:url" content="https://<?php echo $_SERVER['HTTP_HOST']; ?>/">
-    <meta property="og:title" content="<?php echo htmlspecialchars($settings['site_title'] ?? 'VISION D\'AIGLES Tabernacle'); ?>">
-    <meta property="og:description" content="<?php echo htmlspecialchars($settings['site_description'] ?? 'VISION D\'AIGLES Tabernacle - Une église de foi et de puissance'); ?>">
-    <meta property="og:image" content="https://<?php echo $_SERVER['HTTP_HOST']; ?>/images/logo.png">
+    <meta property="og:title" content="<?php echo htmlspecialchars($site_title); ?>">
+    <meta property="og:description" content="<?php echo htmlspecialchars($site_description); ?>">
+    <meta property="og:image" content="https://<?php echo $_SERVER['HTTP_HOST']; ?>/assets/images/logo.png">
+    
+    <!-- Twitter Card -->
+    <meta name="twitter:card" content="summary_large_image">
+    <meta name="twitter:title" content="<?php echo htmlspecialchars($site_title); ?>">
+    <meta name="twitter:description" content="<?php echo htmlspecialchars($site_description); ?>">
+    <meta name="twitter:image" content="https://<?php echo $_SERVER['HTTP_HOST']; ?>/assets/images/logo.png">
     
     <!-- CSS -->
-    <link rel="stylesheet" href="css/style.css">
     <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0/css/all.min.css">
     <link rel="stylesheet" href="https://cdn.plyr.io/3.7.8/plyr.css" />
     
     <!-- Favicon -->
-    <link rel="icon" type="image/png" href="images/logo.png">
+    <link rel="icon" type="image/png" href="assets/images/logo.png">
+    <link rel="manifest" href="/manifest.json">
     
     <style>
         /* ===== VARIABLES ===== */
@@ -102,28 +142,54 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             --whatsapp: #25D366;
             --youtube: #FF0000;
             --radio: #4CAF50;
+            --bg-body: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
         }
-
-        /* ===== RESET ===== */
-        * {
-            margin: 0;
-            padding: 0;
-            box-sizing: border-box;
+        
+        body.dark-mode {
+            --primary-color: #2c3e50;
+            --primary-dark: #1a2a3a;
+            --primary-light: #34495e;
+            --text-color: #ecf0f1;
+            --text-light: #bdc3c7;
+            --white: #2c3e50;
+            --gray-light: #34495e;
+            --bg-body: #1a1a2e;
+            --shadow: 0 5px 15px rgba(0,0,0,0.3);
+            --shadow-hover: 0 10px 25px rgba(0,0,0,0.4);
         }
-
+        
         body {
             font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
             line-height: 1.6;
             color: var(--text-color);
-            background: linear-gradient(135deg, #f5f7fa 0%, #c3cfe2 100%);
+            background: var(--bg-body);
+            transition: background 0.3s, color 0.3s;
         }
-
+        
+        /* Mode sombre toggle */
+        .dark-mode-toggle {
+            background: none;
+            border: none;
+            color: var(--white);
+            font-size: 1.2rem;
+            cursor: pointer;
+            padding: 8px 12px;
+            border-radius: 50%;
+            transition: all 0.3s;
+        }
+        
+        .dark-mode-toggle:hover {
+            background: rgba(255,255,255,0.2);
+            transform: rotate(15deg);
+        }
+        
+        /* Container */
         .container {
             max-width: 1200px;
             margin: 0 auto;
             padding: 0 20px;
         }
-
+        
         /* ===== HEADER ===== */
         header {
             background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%);
@@ -136,11 +202,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             box-shadow: var(--shadow);
             transition: all 0.3s;
         }
-
-        header:hover {
-            box-shadow: var(--shadow-hover);
-        }
-
+        
         nav {
             display: flex;
             justify-content: space-between;
@@ -149,49 +211,50 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             margin: 0 auto;
             padding: 0 20px;
         }
-
+        
         .logo {
             display: flex;
             align-items: center;
             gap: 15px;
         }
-
+        
         .logo img {
             width: 60px;
             height: 60px;
             border-radius: 50%;
             border: 3px solid var(--accent-color);
             object-fit: cover;
-            transition: transform 0.3s;
+            transition: transform 0.3s ease;
         }
-
+        
         .logo img:hover {
             transform: rotate(360deg) scale(1.1);
         }
-
+        
         .logo h1 {
             font-size: 1.5rem;
             font-weight: 700;
             text-transform: uppercase;
             transition: color 0.3s;
         }
-
+        
         .logo:hover h1 {
             color: var(--accent-color);
         }
-
+        
         .logo span {
             color: var(--accent-color);
             font-size: 0.9rem;
             display: block;
         }
-
+        
         .nav-links {
             display: flex;
             list-style: none;
             gap: 25px;
+            align-items: center;
         }
-
+        
         .nav-links a {
             color: var(--white);
             text-decoration: none;
@@ -200,7 +263,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             position: relative;
             padding: 5px 0;
         }
-
+        
         .nav-links a::after {
             content: '';
             position: absolute;
@@ -211,93 +274,154 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             background: var(--accent-color);
             transition: width 0.3s;
         }
-
+        
         .nav-links a:hover::after,
         .nav-links a.active::after {
             width: 100%;
         }
-
+        
         .nav-links a:hover {
             color: var(--accent-color);
             transform: translateY(-2px);
         }
-
+        
         .nav-links a.active {
             color: var(--accent-color);
         }
-
-        .admin-link {
-            background: var(--accent-color);
-            color: var(--primary-color) !important;
-            padding: 8px 15px !important;
-            border-radius: 5px;
-        }
-
-        .admin-link:hover {
-            background: var(--white);
-            transform: translateY(-2px) !important;
-        }
-
-        .admin-link::after {
-            display: none;
-        }
-
+        
         .menu-toggle {
             display: none;
             font-size: 1.5rem;
             cursor: pointer;
             transition: color 0.3s;
         }
-
+        
         .menu-toggle:hover {
             color: var(--accent-color);
         }
-
+        
+        /* ===== BOUTONS SUIVEZ-NOUS ===== */
+        .top-social-bar {
+            background: linear-gradient(135deg, var(--primary-dark) 0%, var(--primary-color) 100%);
+            padding: 12px 0;
+            position: relative;
+            z-index: 1001;
+            margin-top: 70px;
+        }
+        
+        .top-social-container {
+            max-width: 1200px;
+            margin: 0 auto;
+            padding: 0 20px;
+            display: flex;
+            justify-content: center;
+            gap: 15px;
+            flex-wrap: wrap;
+        }
+        
+        .top-social-btn {
+            display: inline-flex;
+            align-items: center;
+            gap: 8px;
+            padding: 8px 18px;
+            border-radius: 30px;
+            text-decoration: none;
+            font-weight: 600;
+            font-size: 0.85rem;
+            transition: all 0.3s;
+            border: 2px solid transparent;
+        }
+        
+        .top-social-btn:hover {
+            transform: translateY(-3px);
+            filter: brightness(1.1);
+        }
+        
+        .top-social-btn.youtube {
+            background: var(--youtube);
+            color: white;
+        }
+        
+        .top-social-btn.radio {
+            background: var(--radio);
+            color: white;
+        }
+        
+        .top-social-btn.whatsapp {
+            background: var(--whatsapp);
+            color: white;
+        }
+        
+        .top-social-btn.pasteur {
+            background: var(--accent-color);
+            color: var(--primary-color);
+        }
+        
+        .top-social-btn.app {
+            background: #2c3e50;
+            color: white;
+        }
+        
         /* ===== HERO ===== */
         .hero {
             background: linear-gradient(rgba(0,0,0,0.7), rgba(0,0,0,0.7)), 
-                        url('https://raw.githubusercontent.com/yourhopecg-dev/IMA/main/about.jpeg');
+                        url('assets/images/about1.jpeg');
             background-size: cover;
             background-position: center;
             background-attachment: fixed;
-            height: 100vh;
+            min-height: 90vh;
             display: flex;
             align-items: center;
             justify-content: center;
             text-align: center;
             color: var(--white);
-            margin-top: 80px;
         }
-
+        
         .hero-content {
             max-width: 800px;
             padding: 0 20px;
         }
-
+        
+        .hero-logo {
+            width: 150px;
+            height: 150px;
+            border-radius: 50%;
+            border: 4px solid var(--accent-color);
+            margin-bottom: 30px;
+            object-fit: cover;
+            animation: pulse 2s infinite ease-in-out;
+        }
+        
+        @keyframes pulse {
+            0% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,215,0,0.7); }
+            70% { transform: scale(1.05); box-shadow: 0 0 0 20px rgba(255,215,0,0); }
+            100% { transform: scale(1); box-shadow: 0 0 0 0 rgba(255,215,0,0); }
+        }
+        
         .hero-content h2 {
             font-size: 3rem;
             margin-bottom: 20px;
             text-shadow: 2px 2px 4px rgba(0,0,0,0.5);
             animation: fadeInDown 1s;
         }
-
+        
         .hero-content p {
             font-size: 1.5rem;
             margin-bottom: 30px;
             font-style: italic;
             animation: fadeInUp 1s;
         }
-
+        
         @keyframes fadeInDown {
             from { opacity: 0; transform: translateY(-50px); }
             to { opacity: 1; transform: translateY(0); }
         }
-
+        
         @keyframes fadeInUp {
             from { opacity: 0; transform: translateY(50px); }
             to { opacity: 1; transform: translateY(0); }
         }
-
+        
         .btn {
             display: inline-block;
             padding: 15px 30px;
@@ -313,7 +437,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             overflow: hidden;
             z-index: 1;
         }
-
+        
         .btn::before {
             content: '';
             position: absolute;
@@ -325,42 +449,41 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             transition: left 0.3s;
             z-index: -1;
         }
-
+        
         .btn:hover::before {
             left: 0;
         }
-
+        
         .btn:hover {
             transform: translateY(-5px);
             box-shadow: var(--shadow-hover);
             border-color: var(--white);
         }
-
+        
         .btn-outline {
             background: transparent;
             border: 2px solid var(--accent-color);
             color: var(--white);
         }
-
+        
         .btn-outline:hover {
             background: var(--accent-color);
             color: var(--primary-color);
         }
-
+        
         /* ===== SECTIONS ===== */
         section {
             padding: 80px 20px;
         }
-
+        
         .section-title {
             text-align: center;
             font-size: 2.5rem;
             margin-bottom: 50px;
             color: var(--primary-color);
             position: relative;
-            animation: fadeIn 1s;
         }
-
+        
         .section-title::after {
             content: '';
             display: block;
@@ -370,112 +493,281 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             margin: 20px auto;
             transition: width 0.3s;
         }
-
+        
         .section-title:hover::after {
             width: 150px;
         }
-
+        
+        /* ===== STATISTIQUES ===== */
+        .stats-section {
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+            color: var(--white);
+            text-align: center;
+        }
+        
+        .stats-section .section-title {
+            color: var(--white);
+        }
+        
+        .stats-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(200px, 1fr));
+            gap: 40px;
+            margin-top: 40px;
+        }
+        
+        .stat-item {
+            text-align: center;
+        }
+        
+        .stat-number {
+            font-size: 3rem;
+            font-weight: bold;
+            color: var(--accent-color);
+            margin-bottom: 10px;
+        }
+        
+        .stat-label {
+            font-size: 1rem;
+            opacity: 0.9;
+        }
+        
+        /* ===== TÉMOIGNAGES ===== */
+        .testimonials-section {
+            background: linear-gradient(135deg, #f8f9fa, #e9ecef);
+        }
+        
+        body.dark-mode .testimonials-section {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+        }
+        
+        .testimonials-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+        }
+        
+        .testimonial-card {
+            background: var(--white);
+            padding: 30px;
+            border-radius: 15px;
+            box-shadow: var(--shadow);
+            transition: all 0.3s;
+        }
+        
+        .testimonial-card:hover {
+            transform: translateY(-10px);
+            box-shadow: var(--shadow-hover);
+        }
+        
+        .testimonial-card i {
+            color: var(--accent-color);
+            font-size: 2rem;
+            margin-bottom: 15px;
+            display: block;
+        }
+        
+        .testimonial-card p {
+            font-style: italic;
+            margin-bottom: 20px;
+        }
+        
+        .testimonial-card h4 {
+            color: var(--primary-color);
+        }
+        
+        /* ===== BLOG ===== */
+        .blog-section {
+            background: var(--white);
+        }
+        
+        .blog-grid {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
+            gap: 30px;
+        }
+        
+        .blog-card {
+            background: var(--gray-light);
+            border-radius: 15px;
+            overflow: hidden;
+            box-shadow: var(--shadow);
+            transition: all 0.3s;
+        }
+        
+        .blog-card:hover {
+            transform: translateY(-10px);
+            box-shadow: var(--shadow-hover);
+        }
+        
+        .blog-image {
+            height: 200px;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            color: var(--accent-color);
+        }
+        
+        .blog-content {
+            padding: 25px;
+        }
+        
+        .blog-content h3 {
+            color: var(--primary-color);
+            margin-bottom: 10px;
+        }
+        
+        .blog-meta {
+            color: var(--text-light);
+            font-size: 0.85rem;
+            margin-bottom: 15px;
+        }
+        
+        .blog-meta i {
+            color: var(--accent-color);
+        }
+        
+        .blog-excerpt {
+            color: var(--text-light);
+            margin-bottom: 20px;
+        }
+        
+        /* ===== NOTIFICATIONS PUSH ===== */
+        .push-notification {
+            position: fixed;
+            bottom: 20px;
+            right: 20px;
+            background: var(--primary-color);
+            color: white;
+            padding: 15px 25px;
+            border-radius: 10px;
+            box-shadow: var(--shadow-hover);
+            z-index: 1000;
+            display: flex;
+            align-items: center;
+            gap: 15px;
+            animation: slideIn 0.5s ease;
+        }
+        
+        @keyframes slideIn {
+            from { transform: translateX(100%); opacity: 0; }
+            to { transform: translateX(0); opacity: 1; }
+        }
+        
+        .push-notification button {
+            background: var(--accent-color);
+            color: var(--primary-color);
+            border: none;
+            padding: 8px 15px;
+            border-radius: 5px;
+            cursor: pointer;
+            font-weight: bold;
+        }
+        
+        .push-notification .close {
+            cursor: pointer;
+            font-size: 1.2rem;
+        }
+        
         /* ===== À PROPOS ===== */
         .about {
             background: var(--white);
         }
-
+        
         .about-content {
             display: flex;
             gap: 50px;
             align-items: center;
         }
-
+        
         .about-text {
             flex: 1;
-            animation: slideInLeft 1s;
         }
-
+        
         .about-text p {
             margin-bottom: 20px;
             font-size: 1.1rem;
         }
-
+        
         .about-image {
             flex: 1;
-            animation: slideInRight 1s;
         }
-
+        
         .about-image img {
             width: 100%;
             border-radius: 10px;
             box-shadow: var(--shadow);
             transition: all 0.5s;
         }
-
+        
         .about-image img:hover {
             transform: scale(1.05) rotate(2deg);
             box-shadow: var(--shadow-hover);
         }
-
-        @keyframes slideInLeft {
-            from { opacity: 0; transform: translateX(-50px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-
-        @keyframes slideInRight {
-            from { opacity: 0; transform: translateX(50px); }
-            to { opacity: 1; transform: translateX(0); }
-        }
-
-        /* ===== CARTES DE LIENS ===== */
+        
+        /* ===== LIENS RAPIDES ===== */
         .quick-links {
-            content: '';
-            position: absolute;
-            top: 0;
-            left: -100%;
-            width: 100%;
-            height: 100%;
-            background: rgba(255,255,255,0.3);
-            transition: left 0.3s;
-            z-index: -1;
+            display: flex;
+            justify-content: center;
+            gap: 30px;
+            padding: 40px 20px;
+            background: linear-gradient(135deg, #f8f9fa 0%, #e9ecef 100%);
+            flex-wrap: wrap;
         }
-
+        
+        body.dark-mode .quick-links {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+        }
+        
         .quick-link-card {
-            background: translateY(20px);
-            padding: 0px 0px;
-            border-radius: 20px;
+            background: var(--white);
+            padding: 30px;
+            border-radius: 15px;
             text-align: center;
             box-shadow: var(--shadow);
             transition: all 0.3s;
             text-decoration: none;
             color: var(--text-color);
+            flex: 1;
+            min-width: 200px;
+            max-width: 250px;
         }
-
+        
         .quick-link-card:hover {
-            transform: translateY(-5px);
+            transform: translateY(-10px);
             box-shadow: var(--shadow-hover);
-            border-color: var(--white);
         }
-
+        
         .quick-link-card i {
-            background: transparent;
-            border: 0px solid var(--accent-color);
-            color: var(--white);
+            font-size: 2.5rem;
+            color: var(--primary-color);
+            margin-bottom: 15px;
         }
-
+        
         .quick-link-card h3 {
-            background: var(--accent-color);
+            margin-bottom: 10px;
             color: var(--primary-color);
         }
-
+        
+        .quick-link-card p {
+            font-size: 0.9rem;
+            color: var(--text-light);
+        }
+        
         /* ===== PRÉDICATIONS ===== */
         .sermons {
             background: var(--gray-light);
         }
-
+        
         .sermons-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(350px, 1fr));
             gap: 30px;
             margin-bottom: 40px;
         }
-
+        
         .sermon-card {
             background: var(--white);
             border-radius: 15px;
@@ -483,51 +775,51 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             box-shadow: var(--shadow);
             transition: all 0.3s;
         }
-
+        
         .sermon-card:hover {
             transform: translateY(-10px);
             box-shadow: var(--shadow-hover);
         }
-
-        .sermon-card img {
+        
+        .sermon-image {
             width: 100%;
             height: 200px;
-            object-fit: cover;
-            transition: transform 0.5s;
+            background: linear-gradient(135deg, var(--primary-color), var(--primary-light));
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 3rem;
+            color: var(--accent-color);
         }
-
-        .sermon-card:hover img {
-            transform: scale(1.1);
-        }
-
+        
         .sermon-content {
             padding: 25px;
         }
-
+        
         .sermon-content h3 {
             color: var(--primary-color);
             margin-bottom: 15px;
         }
-
+        
         .sermon-meta {
             color: var(--text-light);
             margin-bottom: 15px;
         }
-
+        
         .sermon-meta i {
             color: var(--accent-color);
             width: 20px;
         }
-
+        
         .audio-player {
             margin: 20px 0;
         }
-
+        
         .plyr {
             border-radius: 8px;
             --plyr-color-main: var(--primary-color);
         }
-
+        
         .sermon-footer {
             display: flex;
             justify-content: space-between;
@@ -536,27 +828,27 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             padding-top: 15px;
             border-top: 1px solid #eee;
         }
-
+        
         .play-count i {
             color: var(--accent-color);
         }
-
+        
         /* ===== ÉVÉNEMENTS ===== */
         .events {
             background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
             color: var(--white);
         }
-
+        
         .events .section-title {
             color: var(--white);
         }
-
+        
         .events-grid {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
             gap: 30px;
         }
-
+        
         .event-card {
             background: rgba(255,255,255,0.1);
             backdrop-filter: blur(10px);
@@ -565,92 +857,89 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             transition: all 0.3s;
             border: 1px solid rgba(255,255,255,0.2);
         }
-
+        
         .event-card:hover {
             transform: translateY(-15px);
             background: rgba(255,255,255,0.2);
             border-color: var(--accent-color);
         }
-
+        
         .event-date {
             font-size: 2rem;
             font-weight: bold;
             color: var(--accent-color);
             margin-bottom: 15px;
         }
-
-        /* ===== PASTEURS ===== */
-        .pastors {
+        
+        /* ===== LE PASTEUR ===== */
+        .pastor-section {
             background: var(--white);
         }
-
-        .pastors-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(280px, 1fr));
-            gap: 40px;
-        }
-
+        
         .pastor-card {
-            text-align: center;
-            padding: 30px;
+            max-width: 900px;
+            margin: 0 auto;
             background: var(--gray-light);
-            border-radius: 10px;
+            border-radius: 20px;
+            overflow: hidden;
+            box-shadow: var(--shadow);
             transition: all 0.3s;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            text-align: center;
+            padding: 40px;
         }
-
+        
         .pastor-card:hover {
             transform: translateY(-10px);
             box-shadow: var(--shadow-hover);
         }
-
+        
         .pastor-card img {
-            width: 200px;
-            height: 200px;
+            width: 250px;
+            height: 250px;
             border-radius: 50%;
             object-fit: cover;
-            border: 5px solid var(--accent-color);
-            margin-bottom: 20px;
+            border: 6px solid var(--accent-color);
+            margin-bottom: 25px;
             transition: all 0.5s;
         }
-
+        
         .pastor-card:hover img {
-            transform: rotate(360deg) scale(1.1);
+            transform: scale(1.05);
         }
-
+        
         .pastor-card h3 {
             color: var(--primary-color);
+            font-size: 1.8rem;
             margin-bottom: 5px;
         }
-
+        
         .pastor-title {
             color: var(--accent-color);
             font-weight: 600;
+            font-size: 1.1rem;
+            margin-bottom: 20px;
         }
-
-        .pastor-social {
-            display: flex;
-            justify-content: center;
-            gap: 15px;
-            margin-top: 15px;
+        
+        .pastor-bio {
+            max-width: 600px;
+            margin: 0 auto;
+            color: var(--text-light);
+            line-height: 1.8;
         }
-
-        .pastor-social a {
-            color: var(--primary-color);
-            font-size: 1.2rem;
-            transition: all 0.3s;
-        }
-
-        .pastor-social a:hover {
-            color: var(--accent-color);
-            transform: translateY(-3px);
-        }
-
+        
         /* ===== REQUÊTES ===== */
         .request-section {
             background: linear-gradient(135deg, #f5f7fa 0%, #e9ecef 100%);
             padding: 60px 20px;
         }
-
+        
+        body.dark-mode .request-section {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+        }
+        
         .request-container {
             max-width: 800px;
             margin: 0 auto;
@@ -660,28 +949,28 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             box-shadow: var(--shadow);
             transition: all 0.3s;
         }
-
+        
         .request-container:hover {
             box-shadow: var(--shadow-hover);
             transform: translateY(-5px);
         }
-
+        
         .request-container h2 {
             color: var(--primary-color);
             text-align: center;
             margin-bottom: 20px;
         }
-
+        
         .form-group {
             margin-bottom: 20px;
         }
-
+        
         .form-group label {
             display: block;
             margin-bottom: 8px;
             font-weight: 600;
         }
-
+        
         .form-group input,
         .form-group select,
         .form-group textarea {
@@ -692,7 +981,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             font-family: inherit;
             transition: all 0.3s;
         }
-
+        
         .form-group input:focus,
         .form-group select:focus,
         .form-group textarea:focus {
@@ -700,13 +989,13 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             border-color: var(--primary-color);
             box-shadow: 0 0 0 3px rgba(30,60,114,0.1);
         }
-
+        
         .form-row {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 20px;
         }
-
+        
         .btn-submit {
             background: var(--primary-color);
             color: var(--white);
@@ -718,13 +1007,13 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             font-size: 1.1rem;
             transition: all 0.3s;
         }
-
+        
         .btn-submit:hover {
             background: var(--primary-light);
             transform: translateY(-5px);
             box-shadow: var(--shadow-hover);
         }
-
+        
         .success-message {
             background: #d4edda;
             color: #155724;
@@ -732,7 +1021,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             border-radius: 8px;
             margin-bottom: 20px;
         }
-
+        
         .error-message {
             background: #f8d7da;
             color: #721c24;
@@ -740,23 +1029,23 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             border-radius: 8px;
             margin-bottom: 20px;
         }
-
+        
         /* ===== CONTACT ===== */
         .contact {
             background: linear-gradient(135deg, var(--primary-color) 0%, var(--primary-light) 100%);
             color: var(--white);
         }
-
+        
         .contact .section-title {
             color: var(--white);
         }
-
+        
         .contact-container {
             display: grid;
             grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
             gap: 50px;
         }
-
+        
         .contact-info {
             background: rgba(255,255,255,0.1);
             padding: 40px;
@@ -764,35 +1053,35 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             backdrop-filter: blur(10px);
             transition: all 0.3s;
         }
-
+        
         .contact-info:hover {
             transform: translateY(-10px);
             background: rgba(255,255,255,0.2);
         }
-
+        
         .contact-info h3 {
             color: var(--accent-color);
             margin-bottom: 20px;
         }
-
+        
         .contact-info p {
             margin-bottom: 15px;
             display: flex;
             align-items: center;
             gap: 10px;
         }
-
+        
         .contact-info i {
             width: 20px;
         }
-
+        
         .social-buttons {
             display: flex;
             flex-direction: column;
             gap: 15px;
             margin-top: 30px;
         }
-
+        
         .social-btn {
             display: flex;
             align-items: center;
@@ -805,64 +1094,74 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             transition: all 0.3s;
             border: 2px solid transparent;
         }
-
+        
         .social-btn i {
             font-size: 1.8rem;
         }
-
+        
         .social-btn:hover {
             transform: translateX(10px);
             border-color: var(--white);
         }
-
+        
         .social-btn.whatsapp { background: var(--whatsapp); }
         .social-btn.whatsapp-group { background: var(--whatsapp); opacity: 0.9; }
         .social-btn.youtube { background: var(--youtube); }
         .social-btn.radio { background: var(--radio); }
-
+        
         .radio-container {
             margin-top: 30px;
             padding: 20px;
             background: rgba(255,255,255,0.1);
             border-radius: 10px;
         }
-
+        
         .radio-player {
             width: 100%;
             margin-top: 15px;
+            border-radius: 8px;
         }
-
+        
         /* ===== CARTE ===== */
         .map-section {
             padding: 60px 20px;
             background: linear-gradient(135deg, #f5f7fa 0%, #e9ecef 100%);
         }
-
+        
+        body.dark-mode .map-section {
+            background: linear-gradient(135deg, #2c3e50, #34495e);
+        }
+        
         .map-container {
             display: grid;
             grid-template-columns: 1fr 1fr;
             gap: 40px;
             align-items: center;
         }
-
+        
         .map-info {
             background: white;
             padding: 40px;
             border-radius: 15px;
             box-shadow: var(--shadow);
         }
-
+        
+        body.dark-mode .map-info {
+            background: var(--white);
+            color: var(--text-color);
+        }
+        
         .map-info h3 {
             color: var(--primary-color);
             margin-bottom: 20px;
         }
-
+        
         .coordinates {
             display: flex;
             gap: 15px;
             margin: 20px 0;
         }
-
+        
         .coord-box {
             background: #f8f9fa;
             padding: 15px;
@@ -870,75 +1169,109 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
             text-align: center;
             flex: 1;
         }
-
+        
+        body.dark-mode .coord-box {
+            background: var(--gray-light);
+        }
+        
         .coord-box strong {
             display: block;
             color: var(--primary-color);
             margin-bottom: 5px;
         }
-
+        
         .map-frame {
             border-radius: 15px;
             overflow: hidden;
             box-shadow: var(--shadow-hover);
             height: 400px;
         }
-
+        
         .map-frame iframe {
             width: 100%;
             height: 100%;
+            border: none;
         }
-
+        
         /* ===== FOOTER ===== */
         footer {
             background: var(--primary-dark);
             color: var(--white);
-            text-align: center;
-            padding: 40px;
+            padding: 60px 0 20px;
         }
-
-        .footer-links {
-            display: flex;
-            justify-content: center;
-            gap: 30px;
+        
+        .footer-content {
+            display: grid;
+            grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));
+            gap: 40px;
+            margin-bottom: 40px;
+        }
+        
+        .footer-section h3 {
+            color: var(--accent-color);
             margin-bottom: 20px;
-            flex-wrap: wrap;
+            font-size: 1.2rem;
+            position: relative;
+            padding-bottom: 10px;
         }
-
-        .footer-links a {
-            color: var(--white);
+        
+        .footer-section h3::after {
+            content: '';
+            position: absolute;
+            bottom: 0;
+            left: 0;
+            width: 40px;
+            height: 2px;
+            background: var(--accent-color);
+        }
+        
+        .footer-section p {
+            color: rgba(255,255,255,0.8);
+            margin-bottom: 10px;
+        }
+        
+        .footer-section a {
+            color: rgba(255,255,255,0.8);
             text-decoration: none;
             transition: color 0.3s;
         }
-
-        .footer-links a:hover {
+        
+        .footer-section a:hover {
             color: var(--accent-color);
         }
-
+        
         .social-links {
             display: flex;
             justify-content: center;
             gap: 20px;
             margin-bottom: 20px;
         }
-
+        
         .social-links a {
             color: var(--white);
             font-size: 2rem;
             transition: all 0.3s;
         }
-
+        
         .social-links a:hover {
             color: var(--accent-color);
             transform: translateY(-5px);
         }
-
+        
+        .copyright {
+            text-align: center;
+            padding-top: 20px;
+            border-top: 1px solid rgba(255,255,255,0.1);
+            font-size: 0.9rem;
+            opacity: 0.7;
+        }
+        
         /* ===== RESPONSIVE ===== */
         @media (max-width: 768px) {
             .menu-toggle {
                 display: block;
             }
-
+            
             .nav-links {
                 display: none;
                 position: absolute;
@@ -951,25 +1284,85 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
                 text-align: center;
                 gap: 15px;
             }
-
+            
             .nav-links.active {
                 display: flex;
             }
-
+            
             .hero-content h2 {
                 font-size: 2rem;
             }
-
+            
             .hero-content p {
                 font-size: 1.2rem;
             }
-
+            
+            .hero-logo {
+                width: 120px;
+                height: 120px;
+            }
+            
             .about-content,
             .map-container {
                 grid-template-columns: 1fr;
             }
-
+            
             .form-row {
+                grid-template-columns: 1fr;
+            }
+            
+            .quick-links {
+                flex-direction: column;
+                align-items: center;
+            }
+            
+            .quick-link-card {
+                max-width: 100%;
+                width: 100%;
+            }
+            
+            .top-social-container {
+                justify-content: center;
+                gap: 10px;
+            }
+            
+            .top-social-btn {
+                padding: 6px 12px;
+                font-size: 0.75rem;
+            }
+            
+            .stats-grid {
+                grid-template-columns: repeat(2, 1fr);
+                gap: 20px;
+            }
+            
+            .stat-number {
+                font-size: 2rem;
+            }
+        }
+        
+        @media (max-width: 480px) {
+            .hero-content h2 {
+                font-size: 1.5rem;
+            }
+            
+            .section-title {
+                font-size: 1.8rem;
+            }
+            
+            .top-social-btn span {
+                display: none;
+            }
+            
+            .top-social-btn i {
+                font-size: 1.2rem;
+            }
+            
+            .top-social-btn {
+                padding: 8px 12px;
+            }
+            
+            .stats-grid {
                 grid-template-columns: 1fr;
             }
         }
@@ -979,7 +1372,7 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
     <header>
         <nav>
             <div class="logo">
-                <img src="images/logo.png" alt="Logo VISION D'AIGLES">
+                <img src="assets/images/logo.png" alt="Logo VISION D'AIGLES" onerror="this.src='https://via.placeholder.com/60x60/1e3c72/ffd700?text=VAT'">
                 <div>
                     <h1>VISION D'AIGLES</h1>
                     <span>Tabernacle</span>
@@ -993,118 +1386,164 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
                 <li><a href="#apropos">À propos</a></li>
                 <li><a href="#sermons">Prédications</a></li>
                 <li><a href="#evenements">Événements</a></li>
-                <li><a href="#pasteurs">Pasteurs</a></li>
-                <li><a href="gallery.php">Galerie</a></li>
-                <li><a href="faq.php">FAQ</a></li>
+                <li><a href="#pasteur">Le Pasteur</a></li>
+                <li><a href="galerie.php">Galerie</a></li>
                 <li><a href="bible.php">Bible</a></li>
+                <li><a href="blog.php">Blog</a></li>
+                <li><a href="faq.php">FAQ</a></li>
                 <li><a href="#requetes">Requêtes</a></li>
                 <li><a href="#contact">Contact</a></li>
-                <li><a href="downloads/app.php">Application</a></li>
-                <?php if(isset($_SESSION['admin_id'])): ?>
-                    <li><a href="admin/dashboard.php" class="admin-link"><i class="fas fa-cog"></i> Admin</a></li>
-                <?php endif; ?>
+                <li><button id="darkModeToggle" class="dark-mode-toggle"><i class="fas fa-moon"></i></button></li>
             </ul>
         </nav>
     </header>
-
+    
+    <!-- BOUTONS SUIVEZ-NOUS -->
+    <div class="top-social-bar">
+        <div class="top-social-container">
+            <a href="<?php echo htmlspecialchars($youtube_url); ?>" target="_blank" class="top-social-btn youtube">
+                <i class="fab fa-youtube"></i> <span>YouTube</span>
+            </a>
+            <a href="<?php echo htmlspecialchars($radio_url); ?>" target="_blank" class="top-social-btn radio">
+                <i class="fas fa-radio"></i> <span>Radio</span>
+            </a>
+            <a href="<?php echo htmlspecialchars($whatsapp_group); ?>" target="_blank" class="top-social-btn whatsapp">
+                <i class="fab fa-whatsapp"></i> <span>Groupe</span>
+            </a>
+            <a href="<?php echo htmlspecialchars($whatsapp_direct); ?>" target="_blank" class="top-social-btn pasteur">
+                <i class="fas fa-user-pastor"></i> <span>Pasteur</span>
+            </a>
+            <a href="downloads/app.php" class="top-social-btn app">
+                <i class="fas fa-mobile-alt"></i> <span>Application</span>
+            </a>
+        </div>
+    </div>
+    
     <section id="accueil" class="hero">
         <div class="hero-content">
-            <h2><?php echo htmlspecialchars($settings['site_title'] ?? 'VISION D\'AIGLES Tabernacle'); ?></h2>
-            <p>"<?php echo htmlspecialchars($settings['main_verse'] ?? 'Ésaïe 40:31'); ?>"</p>
+            <img src="assets/images/logo.png" alt="VISION D'AIGLES" class="hero-logo" onerror="this.src='https://via.placeholder.com/150x150/1e3c72/ffd700?text=VAT'">
+            <h2><?php echo htmlspecialchars($site_title); ?></h2>
+            <p>"<?php echo htmlspecialchars($main_verse); ?>"</p>
             <div>
                 <a href="#apropos" class="btn">Découvrir</a>
                 <a href="#requetes" class="btn btn-outline">Faire une requête</a>
-                <a href="downloads/app.php" class="quick-link-card">
-    			<i class="fas fa-mobile-alt"></i>
-   				<h3>Cliquez ici pour Télécharger notre Application mobile</h3>
-				</a>
             </div>
         </div>
     </section>
-
+    
+    <!-- Section Statistiques -->
+    <section class="stats-section">
+        <div class="container">
+            <h2 class="section-title">Dieu est fidèle</h2>
+            <div class="stats-grid">
+                <div class="stat-item">
+                    <div class="stat-number"><?php echo number_format($stats['total_sermons_played'] ?? 0); ?></div>
+                    <div class="stat-label">Prédications écoutées</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number"><?php echo number_format($stats['total_downloads'] ?? 0); ?></div>
+                    <div class="stat-label">Téléchargements</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number"><?php echo number_format($stats['total_baptisms'] ?? 0); ?></div>
+                    <div class="stat-label">Personnes baptisées</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number"><?php echo number_format($stats['total_members'] ?? 0); ?></div>
+                    <div class="stat-label">Membres actifs</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number"><?php echo number_format($stats['total_lives_touched'] ?? 0); ?></div>
+                    <div class="stat-label">Vies touchées</div>
+                </div>
+                <div class="stat-item">
+                    <div class="stat-number"><?php echo number_format($stats['total_events'] ?? 0); ?></div>
+                    <div class="stat-label">Événements organisés</div>
+                </div>
+            </div>
+        </div>
+    </section>
+    
     <section id="apropos" class="about">
         <div class="container">
             <h2 class="section-title">À propos de nous</h2>
             <div class="about-content">
                 <div class="about-text">
-                    <p><?php echo htmlspecialchars($settings['site_description'] ?? 'Bienvenue à VISION D\'AIGLES Tabernacle, un lieu de rencontre avec Dieu où chaque fidèle est appelé à prendre son envol spirituel.'); ?></p>
+                    <p>Bienvenue à VISION D'AIGLES Tabernacle, un lieu de rencontre avec Dieu où chaque fidèle est appelé à prendre son envol spirituel.</p>
                     <p>Notre église est fondée sur la parole de Dieu et la puissance du Saint-Esprit. Nous croyons en une foi vivante et dynamique qui transforme des vies et impacte notre communauté.</p>
                     <p>Notre vision est de voir chaque membre s'élever comme un aigle, au-dessus des tempêtes de la vie, pour vivre la plénitude de la bénédiction divine.</p>
                 </div>
                 <div class="about-image">
-                    <img src="images/about.jpeg" alt="Notre église VISION D'AIGLES Tabernacle">
+                    <img src="assets/images/about1.jpeg" alt="Notre église VISION D'AIGLES Tabernacle" onerror="this.src='https://via.placeholder.com/500x400/1e3c72/ffd700?text=VISION+D\'AIGLES'">
                 </div>
             </div>
         </div>
     </section>
-
-    <!-- Liens rapides vers les nouvelles pages -->
-    <div class="container">
-        <div class="quick-links">
-            <a href="gallery.php" class="quick-link-card">
-                <i class="fas fa-images"></i>
-                <h3>Galerie</h3>
-                <p>Photos et vidéos de nos événements</p>
-            </a>
-            <a href="faq.php" class="quick-link-card">
-                <i class="fas fa-question-circle"></i>
-                <h3>FAQ</h3>
-                <p>Réponses à vos questions</p>
-            </a>
-            <a href="bible.php" class="quick-link-card">
-                <i class="fas fa-bible"></i>
-                <h3>Bible en ligne</h3>
-                <p>Lisez la parole de Dieu</p>
-            </a>
-        </div>
+    
+    <!-- Liens rapides -->
+    <div class="quick-links">
+        <a href="galerie.php" class="quick-link-card">
+            <i class="fas fa-images"></i>
+            <h3>Galerie</h3>
+            <p>Photos et vidéos de nos événements</p>
+        </a>
+        <a href="bible.php" class="quick-link-card">
+            <i class="fas fa-bible"></i>
+            <h3>Bible en ligne</h3>
+            <p>Lisez la parole de Dieu</p>
+        </a>
+        <a href="faq.php" class="quick-link-card">
+            <i class="fas fa-question-circle"></i>
+            <h3>FAQ</h3>
+            <p>Réponses à vos questions</p>
+        </a>
+        <a href="blog.php" class="quick-link-card">
+            <i class="fas fa-blog"></i>
+            <h3>Blog</h3>
+            <p>Articles et réflexions</p>
+        </a>
     </div>
-
+    
     <!-- Section Prédications -->
     <section id="sermons" class="sermons">
         <div class="container">
             <h2 class="section-title">Dernières prédications</h2>
             
             <?php if (empty($sermons)): ?>
-                <div class="no-content-message">
-                    <i class="fas fa-microphone-alt"></i>
-                    <p>Aucune prédication disponible pour le moment.</p>
-                    <?php if(isset($_SESSION['admin_id'])): ?>
-                        <a href="admin/add_sermon.php" class="btn btn-primary">Ajouter une prédication</a>
-                    <?php endif; ?>
+                <div class="no-content-message" style="text-align: center; padding: 40px;">
+                    <i class="fas fa-microphone-alt" style="font-size: 48px; color: var(--accent-color);"></i>
+                    <p style="margin-top: 20px;">Aucune prédication disponible pour le moment.</p>
                 </div>
             <?php else: ?>
                 <div class="sermons-grid">
                     <?php foreach($sermons as $sermon): ?>
-                    <div class="sermon-card" data-id="<?php echo $sermon['id']; ?>">
-                        <?php if(!empty($sermon['image_file']) && file_exists('uploads/' . $sermon['image_file'])): ?>
-                        <img src="uploads/<?php echo $sermon['image_file']; ?>" alt="<?php echo htmlspecialchars($sermon['title']); ?>" loading="lazy">
-                        <?php endif; ?>
-                        
+                    <div class="sermon-card">
+                        <div class="sermon-image">
+                            <i class="fas fa-headphones"></i>
+                        </div>
                         <div class="sermon-content">
                             <h3><?php echo htmlspecialchars($sermon['title']); ?></h3>
                             
                             <div class="sermon-meta">
                                 <p><i class="fas fa-user"></i> <?php echo htmlspecialchars($sermon['preacher']); ?></p>
-                                <p><i class="fas fa-calendar"></i> <?php echo date('d/m/Y', strtotime($sermon['date'])); ?></p>
-                                <?php if(!empty($sermon['bible_verse'])): ?>
-                                <p><i class="fas fa-bible"></i> <?php echo htmlspecialchars($sermon['bible_verse']); ?></p>
-                                <?php endif; ?>
+                                <p><i class="fas fa-calendar"></i> <?php echo date('d/m/Y', strtotime($sermon['sermon_date'])); ?></p>
+                                <p><i class="fas fa-heart"></i> <?php echo $sermon['likes'] ?? 0; ?></p>
                             </div>
                             
-                            <?php if(!empty($sermon['audio_file']) && file_exists('uploads/sermons/' . $sermon['audio_file'])): ?>
+                            <?php if(!empty($sermon['file_path'])): ?>
                             <div class="audio-player">
                                 <audio controls preload="none" class="plyr">
-                                    <source src="uploads/sermons/<?php echo $sermon['audio_file']; ?>" type="audio/mpeg">
+                                    <source src="<?php echo htmlspecialchars($sermon['file_path']); ?>" type="audio/mpeg">
                                     Votre navigateur ne supporte pas l'audio.
                                 </audio>
                             </div>
                             
                             <div class="sermon-footer">
                                 <span class="play-count">
-                                    <i class="fas fa-headphones"></i> <?php echo $sermon['plays'] ?? 0; ?> écoutes
+                                    <i class="fas fa-headphones"></i> <?php echo $sermon['views'] ?? 0; ?> écoutes
                                 </span>
-                                <a href="uploads/sermons/<?php echo $sermon['audio_file']; ?>" 
-                                   class="btn btn-primary" 
+                                <a href="<?php echo htmlspecialchars($sermon['file_path']); ?>" 
+                                   class="btn" 
                                    download
                                    style="padding: 8px 15px; font-size: 0.9rem;">
                                     <i class="fas fa-download"></i> Télécharger
@@ -1116,24 +1555,22 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
                     <?php endforeach; ?>
                 </div>
                 
-                <?php if(count($sermons) >= 6): ?>
-                <div class="text-center">
-                    <a href="sermons.php" class="btn btn-primary">Voir toutes les prédications</a>
+                <div class="text-center" style="text-align: center;">
+                    <a href="sermons.php" class="btn">Voir toutes les prédications</a>
                 </div>
-                <?php endif; ?>
             <?php endif; ?>
         </div>
     </section>
-
+    
     <!-- Section Événements -->
     <section id="evenements" class="events">
         <div class="container">
             <h2 class="section-title">Événements à venir</h2>
             
             <?php if (empty($events)): ?>
-                <div class="no-content-message light">
-                    <i class="fas fa-calendar-times"></i>
-                    <p>Aucun événement planifié pour le moment.</p>
+                <div class="no-content-message" style="text-align: center; padding: 40px;">
+                    <i class="fas fa-calendar-times" style="font-size: 48px; color: var(--accent-color);"></i>
+                    <p style="margin-top: 20px;">Aucun événement planifié pour le moment.</p>
                 </div>
             <?php else: ?>
                 <div class="events-grid">
@@ -1143,215 +1580,80 @@ if($_SERVER['REQUEST_METHOD'] == 'POST' && isset($_POST['submit_request'])) {
                             <?php echo strtoupper(date('d M', strtotime($event['event_date']))); ?>
                         </div>
                         <h3><?php echo htmlspecialchars($event['title']); ?></h3>
-                        <?php if(!empty($event['event_time'])): ?>
-                        <p><i class="fas fa-clock"></i> <?php echo date('H:i', strtotime($event['event_time'])); ?></p>
-                        <?php endif; ?>
-                        <?php if(!empty($event['description'])): ?>
-                        <p><?php echo htmlspecialchars($event['description']); ?></p>
-                        <?php endif; ?>
+                        <p><i class="fas fa-clock"></i> <?php echo date('H:i', strtotime($event['event_date'])); ?></p>
+                        <p><?php echo htmlspecialchars(substr($event['description'], 0, 100)); ?>...</p>
+                        <a href="event.php?id=<?php echo $event['id']; ?>" class="btn" style="margin-top: 15px; padding: 8px 20px;">S'inscrire</a>
                     </div>
                     <?php endforeach; ?>
                 </div>
             <?php endif; ?>
         </div>
     </section>
-
-    <!-- Section Pasteurs -->
-    <section id="pasteurs" class="pastors">
+    
+    <!-- Section Témoignages -->
+    <?php if (!empty($testimonials)): ?>
+    <section class="testimonials-section">
         <div class="container">
-            <h2 class="section-title">Nos pasteurs</h2>
-            
-            <?php if (empty($pastors)): ?>
-                <div class="no-content-message">
-                    <i class="fas fa-users"></i>
-                    <p>La liste des pasteurs sera bientôt disponible.</p>
+            <h2 class="section-title">Ils témoignent</h2>
+            <div class="testimonials-grid">
+                <?php foreach ($testimonials as $t): ?>
+                <div class="testimonial-card">
+                    <i class="fas fa-quote-left"></i>
+                    <p>"<?php echo htmlspecialchars($t['content']); ?>"</p>
+                    <h4>- <?php echo htmlspecialchars($t['name']); ?></h4>
                 </div>
-            <?php else: ?>
-                <div class="pastors-grid">
-                    <?php foreach($pastors as $pastor): ?>
-                    <div class="pastor-card">
-                        <?php if(!empty($pastor['image_file']) && file_exists('uploads/' . $pastor['image_file'])): ?>
-                        <img src="uploads/<?php echo $pastor['image_file']; ?>" alt="<?php echo htmlspecialchars($pastor['name']); ?>" loading="lazy">
-                        <?php else: ?>
-                        <img src="images/pastor-placeholder.jpg" alt="<?php echo htmlspecialchars($pastor['name']); ?>">
-                        <?php endif; ?>
-                        
-                        <h3><?php echo htmlspecialchars($pastor['name']); ?></h3>
-                        <p class="pastor-title"><?php echo htmlspecialchars($pastor['title'] ?? 'Pasteur'); ?></p>
-                        
-                        <?php if(!empty($pastor['bio'])): ?>
-                        <p class="bio"><?php echo htmlspecialchars(substr($pastor['bio'], 0, 100)); ?>...</p>
-                        <?php endif; ?>
-                        
-                        <div class="pastor-social">
-                            <?php if(!empty($pastor['facebook'])): ?>
-                            <a href="<?php echo $pastor['facebook']; ?>" target="_blank"><i class="fab fa-facebook"></i></a>
-                            <?php endif; ?>
-                            <?php if(!empty($pastor['twitter'])): ?>
-                            <a href="<?php echo $pastor['twitter']; ?>" target="_blank"><i class="fab fa-twitter"></i></a>
-                            <?php endif; ?>
-                            <?php if(!empty($pastor['instagram'])): ?>
-                            <a href="<?php echo $pastor['instagram']; ?>" target="_blank"><i class="fab fa-instagram"></i></a>
-                            <?php endif; ?>
-                        </div>
+                <?php endforeach; ?>
+            </div>
+            <div style="text-align: center; margin-top: 30px;">
+                <a href="temoignages.php" class="btn">Partager mon témoignage</a>
+            </div>
+        </div>
+    </section>
+    <?php endif; ?>
+    
+    <!-- Section Blog -->
+    <?php if (!empty($blog_posts)): ?>
+    <section class="blog-section">
+        <div class="container">
+            <h2 class="section-title">Derniers articles</h2>
+            <div class="blog-grid">
+                <?php foreach ($blog_posts as $post): ?>
+                <div class="blog-card">
+                    <div class="blog-image">
+                        <i class="fas fa-blog"></i>
                     </div>
-                    <?php endforeach; ?>
+                    <div class="blog-content">
+                        <h3><?php echo htmlspecialchars($post['title']); ?></h3>
+                        <div class="blog-meta">
+                            <span><i class="fas fa-calendar"></i> <?php echo date('d/m/Y', strtotime($post['created_at'])); ?></span>
+                            <span><i class="fas fa-eye"></i> <?php echo $post['views']; ?> vues</span>
+                        </div>
+                        <p class="blog-excerpt"><?php echo htmlspecialchars(substr($post['excerpt'] ?? strip_tags($post['content']), 0, 120)); ?>...</p>
+                        <a href="article.php?slug=<?php echo $post['slug']; ?>" class="btn" style="padding: 8px 20px;">Lire la suite</a>
+                    </div>
                 </div>
-            <?php endif; ?>
+                <?php endforeach; ?>
+            </div>
+            <div style="text-align: center; margin-top: 30px;">
+                <a href="blog.php" class="btn">Voir tous les articles</a>
+            </div>
+        </div>
+    </section>
+    <?php endif; ?>
+    
+    <!-- Section LE PASTEUR -->
+    <section id="pasteur" class="pastor-section">
+        <div class="container">
+            <h2 class="section-title">Le Pasteur</h2>
+            <div class="pastor-card">
+                <img src="<?php echo htmlspecialchars($pastor_photo); ?>" alt="<?php echo htmlspecialchars($pastor_name); ?>" onerror="this.src='assets/images/pastor-placeholder.jpg'">
+                <h3><?php echo htmlspecialchars($pastor_name); ?></h3>
+                <p class="pastor-title"><?php echo htmlspecialchars($pastor_title); ?></p>
+                <p class="pastor-bio"><?php echo nl2br(htmlspecialchars($pastor_bio)); ?></p>
+            </div>
         </div>
     </section>
     
-    <!-- Section Newsletter avec choix email/WhatsApp -->
-<section class="newsletter-section" style="background: linear-gradient(135deg, #1e3c72 0%, #2a5298 100%); color: white; padding: 60px 20px; text-align: center;">
-    <div class="container">
-        <h2 style="font-size: 2.5rem; margin-bottom: 20px;">
-            <i class="fas fa-envelope-open-text"></i> Restez connecté
-        </h2>
-        <p style="font-size: 1.2rem; margin-bottom: 30px; opacity: 0.9;">
-            Recevez les dernières nouvelles, prédications et événements de notre église<br>
-            <small>Choisissez votre moyen de contact préféré</small>
-        </p>
-        
-        <div id="newsletterMessage"></div>
-        
-        <form id="newsletterForm" style="max-width: 500px; margin: 0 auto;" onsubmit="subscribeNewsletter(event)">
-            <div style="background: rgba(255,255,255,0.1); padding: 30px; border-radius: 15px; backdrop-filter: blur(10px);">
-                
-                <!-- Nom (optionnel) -->
-                <div style="margin-bottom: 20px; text-align: left;">
-                    <label style="display: block; margin-bottom: 8px; font-weight: 600;">
-                        <i class="fas fa-user"></i> Votre prénom (optionnel)
-                    </label>
-                    <input type="text" name="name" placeholder="Ex: Jean" 
-                           style="width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 1rem;">
-                </div>
-                
-                <!-- Choix du mode de contact -->
-                <div style="margin-bottom: 20px; text-align: left;">
-                    <label style="display: block; margin-bottom: 8px; font-weight: 600;">
-                        <i class="fas fa-address-card"></i> Comment souhaitez-vous être contacté ?
-                    </label>
-                    <div style="display: flex; gap: 20px; background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px;">
-                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                            <input type="radio" name="preferred" value="email" checked onclick="toggleContactField('email')">
-                            <i class="fas fa-envelope" style="font-size: 1.2rem;"></i> Email
-                        </label>
-                        <label style="display: flex; align-items: center; gap: 10px; cursor: pointer;">
-                            <input type="radio" name="preferred" value="whatsapp" onclick="toggleContactField('whatsapp')">
-                            <i class="fab fa-whatsapp" style="font-size: 1.2rem;"></i> WhatsApp
-                        </label>
-                    </div>
-                </div>
-                
-                <!-- Champ Email -->
-                <div id="emailField" style="margin-bottom: 20px; text-align: left;">
-                    <label style="display: block; margin-bottom: 8px; font-weight: 600;">
-                        <i class="fas fa-envelope"></i> Votre adresse email
-                    </label>
-                    <input type="email" name="email" placeholder="exemple@email.com" 
-                           style="width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 1rem;">
-                </div>
-                
-                <!-- Champ WhatsApp -->
-                <div id="whatsappField" style="margin-bottom: 20px; text-align: left; display: none;">
-                    <label style="display: block; margin-bottom: 8px; font-weight: 600;">
-                        <i class="fab fa-whatsapp"></i> Votre numéro WhatsApp
-                    </label>
-                    <input type="tel" name="phone" placeholder="+242 XX XXX XXXX" 
-                           style="width: 100%; padding: 12px; border: none; border-radius: 8px; font-size: 1rem;">
-                    <small style="display: block; margin-top: 5px; opacity: 0.8;">
-                        Format international : +242061234567
-                    </small>
-                </div>
-                
-                <button type="submit" 
-                        style="width: 100%; padding: 15px; background: #ffd700; color: #1e3c72; border: none; border-radius: 8px; font-weight: bold; font-size: 1.1rem; cursor: pointer; transition: all 0.3s;">
-                    <i class="fas fa-paper-plane"></i> S'abonner à la newsletter
-                </button>
-                
-                <p style="margin-top: 20px; font-size: 0.85rem; opacity: 0.8;">
-                    <i class="fas fa-lock"></i> Vos informations sont confidentielles. Désabonnement possible à tout moment.
-                </p>
-            </div>
-        </form>
-    </div>
-</section>
-
-<script>
-function toggleContactField(type) {
-    const emailField = document.getElementById('emailField');
-    const whatsappField = document.getElementById('whatsappField');
-    
-    if (type === 'email') {
-        emailField.style.display = 'block';
-        whatsappField.style.display = 'none';
-        document.querySelector('input[name="email"]').required = true;
-        document.querySelector('input[name="phone"]').required = false;
-    } else {
-        emailField.style.display = 'none';
-        whatsappField.style.display = 'block';
-        document.querySelector('input[name="email"]').required = false;
-        document.querySelector('input[name="phone"]').required = true;
-    }
-}
-
-function subscribeNewsletter(event) {
-    event.preventDefault();
-    
-    const form = document.getElementById('newsletterForm');
-    const formData = new FormData(form);
-    const messageDiv = document.getElementById('newsletterMessage');
-    
-    // Déterminer quel champ est requis
-    const preferred = formData.get('preferred');
-    const email = formData.get('email');
-    const phone = formData.get('phone');
-    
-    if (preferred === 'email' && !email) {
-        alert('Veuillez entrer votre adresse email');
-        return;
-    }
-    
-    if (preferred === 'whatsapp' && !phone) {
-        alert('Veuillez entrer votre numéro WhatsApp');
-        return;
-    }
-    
-    // Afficher le chargement
-    messageDiv.innerHTML = '<div style="background: rgba(255,255,255,0.2); padding: 15px; border-radius: 8px; margin-bottom: 20px;">' +
-        '<i class="fas fa-spinner fa-spin"></i> Inscription en cours...</div>';
-    
-    // Envoyer la requête
-    fetch('api/subscribe_newsletter.php', {
-        method: 'POST',
-        headers: {
-            'Content-Type': 'application/json',
-        },
-        body: JSON.stringify({
-            name: formData.get('name'),
-            email: email,
-            phone: phone,
-            preferred: preferred
-        })
-    })
-    .then(response => response.json())
-    .then(data => {
-        if (data.success) {
-            messageDiv.innerHTML = '<div style="background: #d4edda; color: #155724; padding: 15px; border-radius: 8px; margin-bottom: 20px;">' +
-                '<i class="fas fa-check-circle"></i> ' + data.message + '</div>';
-            form.reset();
-        } else {
-            messageDiv.innerHTML = '<div style="background: #f8d7da; color: #721c24; padding: 15px; border-radius: 8px; margin-bottom: 20px;">' +
-                '<i class="fas fa-exclamation-circle"></i> ' + data.error + '</div>';
-        }
-    })
-    .catch(error => {
-        messageDiv.innerHTML = '<div style="background: #f8d7da; color: #721c24; padding: 15px; border-radius: 8px; margin-bottom: 20px;">' +
-            '<i class="fas fa-exclamation-circle"></i> Une erreur est survenue. Veuillez réessayer.</div>';
-    });
-}
-</script>
-
     <!-- Section Requêtes -->
     <section id="requetes" class="request-section">
         <div class="request-container">
@@ -1392,10 +1694,10 @@ function subscribeNewsletter(event) {
                     <div class="form-group">
                         <label>Type de requête *</label>
                         <select name="request_type" required>
-                            <option value="prière">🙏 Demande de prière</option>
+                            <option value="priere">🙏 Demande de prière</option>
                             <option value="conseil">💭 Conseil spirituel</option>
                             <option value="visite">🏠 Demande de visite</option>
-                            <option value="témoignage">✨ Témoignage</option>
+                            <option value="temoignage">✨ Témoignage</option>
                             <option value="autre">📝 Autre</option>
                         </select>
                     </div>
@@ -1416,7 +1718,7 @@ function subscribeNewsletter(event) {
             </form>
         </div>
     </section>
-
+    
     <!-- Section Contact et Réseaux Sociaux -->
     <section id="contact" class="contact">
         <div class="container">
@@ -1425,43 +1727,36 @@ function subscribeNewsletter(event) {
             <div class="contact-container">
                 <div class="contact-info">
                     <h3>Nos coordonnées</h3>
-                    <p><i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($settings['address'] ?? 'Adresse à venir'); ?></p>
-                    <p><i class="fas fa-phone"></i> <?php echo htmlspecialchars($settings['contact_phone'] ?? '+242 06 629 30 93'); ?></p>
-                    <p><i class="fas fa-envelope"></i> <?php echo htmlspecialchars($settings['contact_email'] ?? 'contact@visiondaigles.org'); ?></p>
-                    <p><i class="fas fa-clock"></i> Horaires : <?php echo htmlspecialchars($settings['worship_times'] ?? 'Dimanche 10h'); ?></p>
+                    <p><i class="fas fa-map-marker-alt"></i> <?php echo htmlspecialchars($address); ?></p>
+                    <p><i class="fas fa-phone"></i> <?php echo htmlspecialchars($contact_phone); ?></p>
+                    <p><i class="fas fa-envelope"></i> <?php echo htmlspecialchars($contact_email); ?></p>
+                    <p><i class="fas fa-clock"></i> <?php echo htmlspecialchars($worship_times); ?></p>
                 </div>
                 
                 <div class="contact-info">
                     <h3>Suivez-nous</h3>
                     
                     <div class="social-buttons">
-                        <!-- WhatsApp Direct -->
-                        <a href="https://wa.me/242066293093?text=Bonjour%2C%20je%20souhaite%20avoir%20des%20informations" 
-                           class="social-btn whatsapp" target="_blank">
+                        <a href="<?php echo htmlspecialchars($whatsapp_direct); ?>" class="social-btn whatsapp" target="_blank">
                             <i class="fab fa-whatsapp"></i>
                             <span>WhatsApp Direct</span>
                         </a>
                         
-                        <!-- Groupe WhatsApp -->
-                        <a href="https://chat.whatsapp.com/HCikWDquIvw4qNfDGjErRC" 
-                           class="social-btn whatsapp-group" target="_blank">
+                        <a href="<?php echo htmlspecialchars($whatsapp_group); ?>" class="social-btn whatsapp-group" target="_blank">
                             <i class="fab fa-whatsapp"></i>
                             <span>Groupe WhatsApp</span>
                         </a>
                         
-                        <!-- YouTube -->
-                        <a href="https://www.youtube.com/@AyezFoienDieu" 
-                           class="social-btn youtube" target="_blank">
+                        <a href="<?php echo htmlspecialchars($youtube_url); ?>" class="social-btn youtube" target="_blank">
                             <i class="fab fa-youtube"></i>
                             <span>Chaîne YouTube</span>
                         </a>
                     </div>
                     
-                    <!-- Radio en ligne -->
                     <div class="radio-container">
                         <h4><i class="fas fa-radio"></i> Radio en ligne</h4>
                         <audio controls class="radio-player">
-                            <source src="https://vateglise.ismyradio.com/stream" type="audio/mpeg">
+                            <source src="<?php echo htmlspecialchars($radio_url); ?>" type="audio/mpeg">
                             Votre navigateur ne supporte pas la radio.
                         </audio>
                     </div>
@@ -1469,7 +1764,7 @@ function subscribeNewsletter(event) {
             </div>
         </div>
     </section>
-
+    
     <!-- Section Carte Interactive -->
     <section class="map-section">
         <div class="container">
@@ -1490,7 +1785,7 @@ function subscribeNewsletter(event) {
                         </div>
                     </div>
                     
-                    <p><i class="fas fa-clock" style="color: var(--accent-color);"></i> <?php echo htmlspecialchars($settings['worship_times'] ?? 'Dimanche 10h00 - Mercredi 18h30'); ?></p>
+                    <p><i class="fas fa-clock"></i> <?php echo htmlspecialchars($worship_times); ?></p>
                     
                     <div style="display: flex; gap: 15px; margin-top: 25px;">
                         <button onclick="getDirections()" class="btn" style="flex: 1;">
@@ -1507,7 +1802,7 @@ function subscribeNewsletter(event) {
                 
                 <div class="map-frame">
                     <iframe 
-                        src="https://www.google.com/maps/embed?pb=!1m17!1m12!1m3!1d3979.9123456789!2d11.90328!3d-4.79233!2m3!1f0!2f0!3f0!3m2!1i1024!2i768!4f13.1!3m2!1m1!2zNMKwNDcnMzIuNCJTIDExwrA1NCcxOS4wIkU!5e0!3m2!1sfr!2scg!4v1234567890"
+                        src="https://www.openstreetmap.org/export/embed.html?bbox=11.87528%2C-4.82233%2C11.93528%2C-4.76233&amp;layer=mapnik&amp;marker=-4.79233%2C11.90528"
                         allowfullscreen="" 
                         loading="lazy">
                     </iframe>
@@ -1515,30 +1810,17 @@ function subscribeNewsletter(event) {
             </div>
         </div>
     </section>
-
-    <!-- Footer -->
-    <footer>
-        <div class="footer-links">
-            <a href="#accueil">Accueil</a>
-            <a href="#apropos">À propos</a>
-            <a href="#sermons">Prédications</a>
-            <a href="#evenements">Événements</a>
-            <a href="#pasteurs">Pasteurs</a>
-            <a href="gallery.php">Galerie</a>
-            <a href="faq.php">FAQ</a>
-            <a href="bible.php">Bible</a>
-            <a href="#requetes">Requêtes</a>
-            <a href="#contact">Contact</a>
-        </div>
-        <div class="social-links">
-            <a href="https://wa.me/242066293093" target="_blank"><i class="fab fa-whatsapp"></i></a>
-            <a href="https://chat.whatsapp.com/HCikWDquIvw4qNfDGjErRC" target="_blank"><i class="fab fa-whatsapp"></i></a>
-            <a href="https://www.youtube.com/@AyezFoienDieu" target="_blank"><i class="fab fa-youtube"></i></a>
-            <a href="https://vateglise.ismyradio.com/player" target="_blank"><i class="fas fa-radio"></i></a>
-        </div>
-        <p>&copy; <?php echo date('Y'); ?> <?php echo htmlspecialchars($settings['site_title'] ?? 'VISION D\'AIGLES Tabernacle'); ?>. Tous droits réservés.</p>
-    </footer>
-
+    
+    <!-- Notifications Push -->
+    <div id="pushNotification" class="push-notification" style="display: none;">
+        <i class="fas fa-bell"></i>
+        <span>Recevez les notifications des nouvelles prédications</span>
+        <button id="subscribePush">Activer</button>
+        <span class="close" onclick="document.getElementById('pushNotification').style.display='none'">&times;</span>
+    </div>
+    
+    <?php include 'includes/footer.php'; ?>
+    
     <!-- Scripts -->
     <script src="https://cdn.plyr.io/3.7.8/plyr.js"></script>
     <script>
@@ -1546,27 +1828,26 @@ function subscribeNewsletter(event) {
         document.getElementById('menu-toggle').addEventListener('click', function() {
             document.getElementById('nav-links').classList.toggle('active');
         });
-
-        // Smooth scroll pour les ancres internes
+        
+        // Smooth scroll
         document.querySelectorAll('a[href^="#"]').forEach(anchor => {
             anchor.addEventListener('click', function (e) {
                 e.preventDefault();
                 const target = document.querySelector(this.getAttribute('href'));
                 if (target) {
                     target.scrollIntoView({ behavior: 'smooth' });
-                    // Fermer le menu mobile
                     document.getElementById('nav-links').classList.remove('active');
                 }
             });
         });
-
-        // Initialiser les lecteurs audio
+        
+        // Lecteurs audio
         const players = Plyr.setup('.plyr', {
             controls: ['play', 'progress', 'current-time', 'mute', 'volume'],
             settings: ['speed'],
             speed: { selected: 1, options: [0.5, 0.75, 1, 1.25, 1.5, 2] }
         });
-
+        
         // Animation du header au scroll
         window.addEventListener('scroll', function() {
             const header = document.querySelector('header');
@@ -1578,8 +1859,8 @@ function subscribeNewsletter(event) {
                 header.style.padding = '1rem 0';
             }
         });
-
-        // Fonction pour l'itinéraire
+        
+        // Itinéraire
         function getDirections() {
             if (navigator.geolocation) {
                 navigator.geolocation.getCurrentPosition(function(position) {
@@ -1587,7 +1868,6 @@ function subscribeNewsletter(event) {
                     const userLng = position.coords.longitude;
                     const churchLat = -4.79233;
                     const churchLng = 11.90528;
-                    
                     window.open(`https://www.google.com/maps/dir/${userLat},${userLng}/${churchLat},${churchLng}`, '_blank');
                 }, function() {
                     window.open('https://www.google.com/maps?q=-4.79233,11.90528', '_blank');
@@ -1596,19 +1876,83 @@ function subscribeNewsletter(event) {
                 window.open('https://www.google.com/maps?q=-4.79233,11.90528', '_blank');
             }
         }
-
+        
+        // Mode sombre
+        const darkModeToggle = document.getElementById('darkModeToggle');
+        if (localStorage.getItem('darkMode') === 'enabled') {
+            document.body.classList.add('dark-mode');
+            darkModeToggle.innerHTML = '<i class="fas fa-sun"></i>';
+        }
+        
+        darkModeToggle.addEventListener('click', () => {
+            document.body.classList.toggle('dark-mode');
+            if (document.body.classList.contains('dark-mode')) {
+                localStorage.setItem('darkMode', 'enabled');
+                darkModeToggle.innerHTML = '<i class="fas fa-sun"></i>';
+            } else {
+                localStorage.setItem('darkMode', 'disabled');
+                darkModeToggle.innerHTML = '<i class="fas fa-moon"></i>';
+            }
+        });
+        
+        // Notifications Push
+        if ('serviceWorker' in navigator && 'PushManager' in window) {
+            navigator.serviceWorker.register('/service-worker.js')
+                .then(function(registration) {
+                    console.log('Service Worker enregistré');
+                    
+                    // Vérifier si déjà abonné
+                    registration.pushManager.getSubscription()
+                        .then(function(subscription) {
+                            if (!subscription) {
+                                setTimeout(function() {
+                                    document.getElementById('pushNotification').style.display = 'flex';
+                                }, 5000);
+                            }
+                        });
+                });
+        }
+        
+        document.getElementById('subscribePush')?.addEventListener('click', function() {
+            navigator.serviceWorker.ready.then(function(registration) {
+                registration.pushManager.subscribe({
+                    userVisibleOnly: true,
+                    applicationServerKey: urlBase64ToUint8Array('VOTRE_CLE_PUBLIQUE')
+                }).then(function(subscription) {
+                    fetch('/api/subscribe_push.php', {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify(subscription)
+                    }).then(function() {
+                        document.getElementById('pushNotification').style.display = 'none';
+                        alert('Notifications activées !');
+                    });
+                });
+            });
+        });
+        
+        function urlBase64ToUint8Array(base64String) {
+            const padding = '='.repeat((4 - base64String.length % 4) % 4);
+            const base64 = (base64String + padding).replace(/\-/g, '+').replace(/_/g, '/');
+            const rawData = window.atob(base64);
+            const outputArray = new Uint8Array(rawData.length);
+            for (let i = 0; i < rawData.length; ++i) {
+                outputArray[i] = rawData.charCodeAt(i);
+            }
+            return outputArray;
+        }
+        
         // Marquer le lien actif
         window.addEventListener('scroll', function() {
             let current = '';
             const sections = document.querySelectorAll('section');
             sections.forEach(section => {
                 const sectionTop = section.offsetTop;
-                const sectionHeight = section.clientHeight;
                 if (pageYOffset >= sectionTop - 200) {
                     current = section.getAttribute('id');
                 }
             });
-
+            
             document.querySelectorAll('.nav-links a[href^="#"]').forEach(link => {
                 link.classList.remove('active');
                 if (link.getAttribute('href') === '#' + current) {
